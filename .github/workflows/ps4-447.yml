@@ -1,0 +1,86 @@
+name: PS4 4.47 verified build
+on:
+  push:
+    branches: ['fix/ps4-447-cache-build']
+    paths: ['.github/workflows/ps4-447.yml', 'ps4-447-source-overlay.zip']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: source
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: inputs
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 87568ca50a89e6f8dd65fe005d21521c27e65c26
+          path: source
+          persist-credentials: false
+      - name: Restore verified source changes
+        run: |
+          $archive = '../inputs/ps4-447-source-overlay.zip'
+          if ((Get-FileHash $archive).Hash -ne '07BE8A1BE27E95EC9DD25FFB621ABFEE8B5B9B8429B4452ED84B96C9F1AE21E3') { throw 'Source checksum mismatch' }
+          Expand-Archive $archive . -Force
+          Remove-Item -LiteralPath src/opennow/gfn/community_proxy.cpp
+          'Base: 87568ca50a89e6f8dd65fe005d21521c27e65c26; overlay source: 30a8ebda6b2142fa86329cc551b6245813328e4e' | Set-Content SOURCE.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Prepare verified OpenOrbis toolchain
+        run: |
+          $env:DOTNET_ROLL_FORWARD = 'Major'
+          'DOTNET_ROLL_FORWARD=Major' | Out-File $env:GITHUB_ENV -Append
+          python -m pip install jinja2==3.1.6 jsonschema==4.23.0
+          if ($LASTEXITCODE -ne 0) { throw 'Python dependencies failed' }
+          ./scripts/bootstrap-ci.ps1
+          $hostShell = Join-Path $PWD 'tools/llvm-mingw-20260922-msvcrt-x86_64/llvm-mingw-20260922-msvcrt-x86_64/busybox/bin/sh.exe'
+          "GFN_PS4_HOST_SHELL=$hostShell" | Out-File $env:GITHUB_ENV -Append
+      - name: Library and cache regression tests
+        run: |
+          ./scripts/test-library-response.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Library tests failed' }
+          $clang = './tools/llvm-mingw-20260922-msvcrt-x86_64/llvm-mingw-20260922-msvcrt-x86_64/bin/clang++.exe'
+          & $clang -std=c++20 -O1 -static tests/ps4_catalog_file_info_test.cpp -o build/cache_test.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Cache test compile failed' }
+          ./build/cache_test.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Cache tests failed' }
+      - name: Compile PKG and run audits
+        run: |
+          ./scripts/build-ps4.ps1 *> build-4.47.log
+          if ($LASTEXITCODE -ne 0) { throw 'PS4 build failed; see diagnostic artifact' }
+      - name: Validate new PKG
+        run: |
+          $pkg = 'build/ps4/IV0000-GFNP00001_00-GFNPS4CLIENT0001.pkg'
+          if (-not (Test-Path $pkg)) { throw 'New PKG missing' }
+          & "$env:OO_PS4_TOOLCHAIN/bin/windows/PkgTool.Core.exe" pkg_validate $pkg *> PKG-validation.log
+          if ($LASTEXITCODE -ne 0) { throw 'PKG validation failed' }
+          Get-FileHash $pkg | Format-List | Out-File SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GeForceNowPS4-4.47-ABYA
+          path: |
+            source/build/ps4/*.pkg
+            source/PKG-validation.log
+            source/SHA256.txt
+            source/SOURCE.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ps4-447-build-diagnostics
+          path: |
+            source/build-4.47.log
+            source/build/**/CMakeConfigureLog.yaml
+            source/src/third_party/ffmpeg/ffbuild/config.log
+          if-no-files-found: ignore
