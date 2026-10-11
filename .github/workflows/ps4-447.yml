@@ -1,8 +1,8 @@
-name: PS4 4.47 verified build
+name: PS4 4.48 verified build
 on:
   push:
     branches: ['fix/ps4-447-cache-build']
-    paths: ['.github/workflows/ps4-447.yml', 'ps4-447-source-overlay.zip']
+    paths: ['.github/workflows/ps4-447.yml', 'ps4-448-source-overlay.zip']
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,11 +26,11 @@ jobs:
           persist-credentials: false
       - name: Restore verified source changes
         run: |
-          $archive = '../inputs/ps4-447-source-overlay.zip'
-          if ((Get-FileHash $archive).Hash -ne '07BE8A1BE27E95EC9DD25FFB621ABFEE8B5B9B8429B4452ED84B96C9F1AE21E3') { throw 'Source checksum mismatch' }
+          $archive = '../inputs/ps4-448-source-overlay.zip'
+          if ((Get-FileHash $archive).Hash -ne 'B6910F1F6DD3D20185D853C37377700C7DBCBDE91170F2D4AD73836420C63FD5') { throw 'Source checksum mismatch' }
           Expand-Archive $archive . -Force
           Remove-Item -LiteralPath src/opennow/gfn/community_proxy.cpp
-          'Base: 87568ca50a89e6f8dd65fe005d21521c27e65c26; overlay source: 30a8ebda6b2142fa86329cc551b6245813328e4e' | Set-Content SOURCE.txt
+          'Base: 87568ca50a89e6f8dd65fe005d21521c27e65c26; overlay source: 468af3917f97f354f5d8c520b8da177df93d0411' | Set-Content SOURCE.txt
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -57,7 +57,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cache tests failed' }
       - name: Compile PKG and run audits
         run: |
-          ./scripts/build-ps4.ps1 *> build-4.47.log
+          ./scripts/build-ps4.ps1 *> build-4.48.log
           if ($LASTEXITCODE -ne 0) { throw 'PS4 build failed; see diagnostic artifact' }
       - name: Validate new PKG
         run: |
@@ -68,7 +68,7 @@ jobs:
           Get-FileHash $pkg | Format-List | Out-File SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: GeForceNowPS4-4.47-ABYA
+          name: GeForceNowPS4-4.48-ABYA
           path: |
             source/build/ps4/*.pkg
             source/PKG-validation.log
@@ -78,9 +78,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ps4-447-build-diagnostics
+          name: ps4-448-build-diagnostics
           path: |
-            source/build-4.47.log
+            source/build-4.48.log
             source/build/**/CMakeConfigureLog.yaml
             source/src/third_party/ffmpeg/ffbuild/config.log
           if-no-files-found: ignore
